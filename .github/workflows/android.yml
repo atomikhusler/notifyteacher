@@ -1,6 +1,6 @@
 name: Build Android APK
 on:
-  workflow_dispatch: # This allows you to trigger the build manually
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -1,0 +1,31 @@
+import { createClient } from '@supabase/supabase-js';
+
+// 1. Pull secure keys from Vite Environment Variables
+// (We do this so your keys are never hardcoded in the source code)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+    console.error("Missing Supabase Environment Variables. Check your .env file.");
+}
+
+// 2. Initialize the live connection
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// 3. Real RPC (Remote Procedure Call) Wrapper for Admin Actions
+// This executes secure SQL functions directly on your database
+export async function adminActionRpc(actionType, targetId) {
+    try {
+        const { data, error } = await supabase.rpc('execute_admin_action', {
+            p_action_type: actionType,
+            p_target_id: targetId
+        });
+        
+        if (error) throw error;
+        return true;
+    } catch (error) {
+        console.error(`Admin Action RPC Failed (${actionType}):`, error);
+        return false;
+    }
+}
+

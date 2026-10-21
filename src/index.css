@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: var(--theme-accent-adaptive);
+  --color-brand-warning: #eab308;
+  --color-brand-danger: #ef4444;
+
+  --color-app-base: var(--theme-bg-base);
+  --color-surface: var(--theme-bg-surface);
+  --color-surface-elevated: var(--theme-bg-elevated);
+  --color-content: var(--theme-text-main);
+  --color-content-muted: var(--theme-text-muted);
+  --color-glass-border: var(--theme-border-glass);
+}
+
+@layer base {
+  /* 1. Base Fallback */
+  :root {
+    --app-accent: #10b981;
+  }
+
+  /* 2. Light Themes: Darken accent by 12% for readable contrast */
+  :root, .theme-light-pure, .theme-light-vanilla, .theme-light-matcha, .theme-light-terra {
+    --theme-accent-adaptive: color-mix(in srgb, var(--app-accent), black 12%);
+  }
+
+  /* 3. Dark Themes: Lighten accent by 15% for premium OLED glow */
+  .theme-dark-amoled, .theme-dark-ocean, .theme-dark-cyber, .theme-dark-midnight {
+    --theme-accent-adaptive: color-mix(in srgb, var(--app-accent), white 15%);
+  }
+  
+  /* =========================================
+     ☀️ LIGHT THEMES (DAY MODE)
+     ========================================= */
+  
+  .theme-light-pure {
+    --theme-bg-base: #F8F9FA;       
+    --theme-bg-surface: #FFFFFF;    
+    --theme-bg-elevated: #E8EAED;   
+    --theme-text-main: #1A1C1E;     
+    --theme-text-muted: #5F6368;    
+    --theme-border-glass: rgba(0, 0, 0, 0.08);
+  }
+
+  .theme-light-vanilla {
+    --theme-bg-base: #FDFBF7;       
+    --theme-bg-surface: #FFFFFF;    
+    --theme-bg-elevated: #EFECE5;   
+    --theme-text-main: #1F1B16;     
+    --theme-text-muted: #6B655D;    
+    --theme-border-glass: rgba(30, 20, 10, 0.08);
+  }
+
+  .theme-light-matcha {
+    --theme-bg-base: #E8F0EA;       
+    --theme-bg-surface: #F4F9F5;    
+    --theme-bg-elevated: #DCE8E0;   
+    --theme-text-main: #1A211D;     
+    --theme-text-muted: #515B55;    
+    --theme-border-glass: rgba(0, 50, 20, 0.08);
+  }
+
+  .theme-light-terra {
+    --theme-bg-base: #FDF8F5;       
+    --theme-bg-surface: #FFFFFF;    
+    --theme-bg-elevated: #F4EAE4;   
+    --theme-text-main: #2D1606;     
+    --theme-text-muted: #705543;    
+    --theme-border-glass: rgba(100, 30, 0, 0.06);
+  }
+
+  /* =========================================
+     🌙 DARK THEMES (NIGHT MODE)
+     ========================================= */
+
+  /* 1. AMOLED (True Black OLED) */
+  .theme-dark-amoled {
+    --theme-bg-base: #000000;       
+    --theme-bg-surface: #09090B;    
+    --theme-bg-elevated: #18181B;   
+    --theme-text-main: #F4F4F5;     
+    --theme-text-muted: #A1A1AA;    
+    --theme-border-glass: rgba(255, 255, 255, 0.1);
+  }
+
+  /* 2. OCEAN (Deep Slate Navy) */
+  .theme-dark-ocean {
+    --theme-bg-base: #020617;       
+    --theme-bg-surface: #0F172A;    
+    --theme-bg-elevated: #1E293B;   
+    --theme-text-main: #F8FAFC;     
+    --theme-text-muted: #94A3B8;    
+    --theme-border-glass: rgba(148, 163, 184, 0.1);
+  }
+
+  /* 3. CYBER (Midnight Purple/Neon) */
+  .theme-dark-cyber {
+    --theme-bg-base: #090416;       
+    --theme-bg-surface: #140727;    
+    --theme-bg-elevated: #2B144E;   
+    --theme-text-main: #F3E8FF;     
+    --theme-text-muted: #A855F7;    
+    --theme-border-glass: rgba(168, 85, 247, 0.15);
+  }
+
+    /* 4. MIDNIGHT (Premium Dark Terracotta / Baked Clay) */
+  .theme-dark-midnight {
+    --theme-bg-base: #170B08;       
+    --theme-bg-surface: #22110C;    
+    --theme-bg-elevated: #361D15;   
+    --theme-text-main: #FDECE8;     
+    --theme-text-muted: #C58B76;    
+    --theme-border-glass: rgba(255, 140, 100, 0.08);
+  }
+
+  html, body, #root {
+    height: 100dvh; 
+    width: 100vw;
+    margin: 0;
+    padding: 0;
+    background-color: var(--theme-bg-base);
+    color: var(--theme-text-main); 
+    overscroll-behavior-y: none; 
+    -webkit-tap-highlight-color: transparent; 
+    transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+  }
+
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; }
+}

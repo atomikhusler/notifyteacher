@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Notify Teacher</title>
+
+        <!-- =========================================================
+         ELITE ANTI-FLASH ENGINE (Native Paint Override & Inversion Lock)
+         ========================================================= -->
+    <script>
+      (function() {
+        try {
+          var rawTheme = localStorage.getItem('CapacitorStorage.app_theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = rawTheme ? rawTheme.replace(/^"|"$/g, '') : null;
+          var finalTheme = theme || (prefersDark ? 'dark-amoled' : 'light-vanilla');
+          var isDark = finalTheme.includes('dark');
+
+          // 1. HARDWARE LOCK: The Chrome Auto-Inversion Kill-Switch
+          var metaCS = document.createElement('meta');
+          metaCS.name = "color-scheme";
+          metaCS.content = isDark ? "dark" : "light only"; // "only" is the magic word
+          document.head.appendChild(metaCS);
+
+          // 2. Base Paint (Matches your AMOLED and Vanilla hex codes)
+          document.documentElement.style.backgroundColor = isDark ? '#000000' : '#FDFBF7';
+          
+          // 3. Inject the Tailwind theme class
+          document.documentElement.classList.add('theme-' + finalTheme);
+
+          // 4. Update Android Status Bar
+          var metaThemeColor = document.querySelector("meta[name=theme-color]");
+          if (metaThemeColor) {
+              metaThemeColor.setAttribute("content", isDark ? "#000000" : "#FDFBF7");
+          }
+        } catch (e) {}
+      })();
+    </script>
+    
+    <style>
+      /* Hardware-level reset to prevent 1-frame layout shifts */
+      html, body, #root { 
+        margin: 0; 
+        padding: 0; 
+        width: 100%; 
+        height: 100%; 
+        overscroll-behavior-y: none;
+      }
+      /* Hide scrollbars during boot */
+      ::-webkit-scrollbar { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

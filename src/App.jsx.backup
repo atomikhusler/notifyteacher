@@ -1,0 +1,276 @@
+import React, { useEffect, useState } from 'react'; 
+import { BootScreen } from './shell/BootScreen.jsx';
+import { MainLayout } from './shell/MainLayout.jsx';
+import { AuthView } from './modules/admin/AuthView.jsx'; // INJECTED AUTH VIEW
+
+import { supabase } from './core/supabaseClient.js'; // INJECTED SUPABASE
+import { fetchAndMixGlobalFeed, toggleNoticeCompletion } from './core/FeedEngine.js';
+import { fetchVaultTasks, saveVaultTask, updateVaultTask, deleteVaultTask } from './core/vaultEngine.js';
+import { executePublishTask, executePurgeTask } from './modules/admin/ModActions.js';
+import { scheduleTaskEscalation, cancelTaskEscalation } from './core/NotificationEngine.js';
+import { secureLocalStoreRead, triggerHaptic, initHaptics } from './core/hardwareBridge.js';
+
+const ACCENT_PALETTE = [
+  { id: 'emerald', hex: '#10b981' }, { id: 'sapphire', hex: '#2563eb' },
+  { id: 'violet', hex: '#a855f7' }, { id: 'crimson', hex: '#f43f5e' },
+  { id: 'amber', hex: '#f59e0b' }, { id: 'coral', hex: '#ff6b4a' },
+  { id: 'cyan', hex: '#06b6d4' }, { id: 'indigo', hex: '#6366f1' },
+  { id: 'fuchsia', hex: '#d946ef' }, { id: 'lime', hex: '#84cc16' },
+  { id: 'sky', hex: '#38bdf8' }, { id: 'adaptive', hex: 'var(--theme-text-main)' }
+];
+
+// --- HELPER: FETCH USER ROLE FROM DATABASE ---
+const fetchUserRole = async (email) => {
+    try {
+        const { data, error } = await supabase
+            .from('authorizations')
+            .select('role_level')
+            .eq('email', email)
+            .maybeSingle();
+            
+        if (error) throw error;
+        return data ? data.role_level : 0; // Default to L0 Teacher
+    } catch (err) {
+        console.error("Role Check Failed:", err);
+        return 0;
+    }
+};
+
+export function App() { 
+    const [systemStatus, setSystemStatus] = useState('initializing'); 
+    const [initialTab, setInitialTab] = useState('feed');
+    const [tasks, setTasks] = useState([]); 
+
+    const [sessionData, setSessionData] = useState(null); 
+  
+    const [isPingingCloud, setIsPingingCloud] = useState(false);
+    const [userRole, setUserRole] = useState(0); // Defaults to 0 until Auth confirms otherwise
+    const [density, setDensity] = useState(3); 
+    const [theme, setTheme] = useState(null);
+
+    useEffect(() => { 
+        executeBootSequence(); 
+    }, []);
+  
+    const executeBootSequence = async () => {
+        try {
+            await initHaptics();
+            const hasOnboarded = await secureLocalStoreRead('has_completed_onboarding');
+            
+            // --- 1. AUTHENTICATION CHECK ---
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (session) {
+                const role = await fetchUserRole(session.user.email);
+                setUserRole(role);
+                setSessionData(session.user);
+            }
+
+            // --- 2. LOCAL MEMORY LOAD ---
+            const lastTab = await secureLocalStoreRead('last_active_tab');
+            if (lastTab && typeof lastTab === 'string') setInitialTab(lastTab);
+
+            const safeVault = await fetchVaultTasks();
+            setTasks(safeVault);
+
+            let savedTheme = await secureLocalStoreRead('app_theme');
+            if (typeof savedTheme !== 'string' || !savedTheme) savedTheme = 'light-vanilla';
+            setTheme(savedTheme);
+
+            let savedAccentId = await secureLocalStoreRead('app_accent');
+            if (savedAccentId) {
+                const found = ACCENT_PALETTE.find(a => a.id === savedAccentId);
+                if (found) document.documentElement.style.setProperty('--app-accent', found.hex);
+            }
+
+            let savedDensity = Number(await secureLocalStoreRead('app_density'));
+            if (isNaN(savedDensity) || savedDensity < 1 || savedDensity > 5) savedDensity = 3; 
+            setDensity(savedDensity);
+            document.documentElement.style.setProperty('--app-scale', 0.85 + (savedDensity * 0.05));
+
+            // --- 3. ROUTING LOGIC ---
+            if (hasOnboarded !== true && hasOnboarded !== 'true') {
+                setSystemStatus('onboarding');
+            } else if (!session) {
+                setSystemStatus('auth'); 
+            } else {
+                setSystemStatus('ready');
+            }
+
+            // --- 4. CLOUD SYNC ---
+            setIsPingingCloud(true);
+            const mixedCloudData = await fetchAndMixGlobalFeed(); 
+            setTasks(prev => {
+                const localOnly = prev.filter(t => !t.isGlobal);
+                return [...mixedCloudData, ...localOnly];
+            });
+
+        } catch (error) {
+            console.error("Boot Architecture Failure:", error);
+            // Fail safely to auth if not logged in
+            setSystemStatus(sessionData ? 'ready' : 'auth'); 
+        } finally {
+            setIsPingingCloud(false);
+        }
+    };
+
+    const handleTaskCompleted = async (taskId) => {
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        if (task.isGlobal) {
+            const { success, completed_at } = await toggleNoticeCompletion(taskId, true);
+            if (success) {
+                setTasks(prev => prev.map(t => t.id === taskId ? { ...t, isCompleted: true, completed_at } : t));
+                await cancelTaskEscalation(taskId);
+            }
+        } else {
+            const timeNow = new Date().toISOString();
+            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, isCompleted: true, completed_at: timeNow } : t));
+            await cancelTaskEscalation(taskId);
+            await updateVaultTask({ ...task, isCompleted: true, completed_at: timeNow });
+        }
+    };
+    
+    const handleTaskUndo = async (taskId) => {
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        if (task.isGlobal) {
+            const { success } = await toggleNoticeCompletion(taskId, false);
+            if (success) {
+                setTasks(prev => prev.map(t => t.id === taskId ? { ...t, isCompleted: false, completed_at: null } : t));
+                await scheduleTaskEscalation(task);
+            }
+        } else {
+            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, isCompleted: false, completed_at: null } : t));
+            await scheduleTaskEscalation(task); 
+            await updateVaultTask({ ...task, isCompleted: false, completed_at: null });
+        }
+    };
+
+    const handleAddTask = async (newTask) => {
+        setTasks(prev => [...prev, newTask]);
+        await saveVaultTask(newTask);
+        await scheduleTaskEscalation(newTask);
+    };
+
+    const handleUpdateTask = async (updatedTask) => {
+        setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+        await updateVaultTask(updatedTask);
+        await scheduleTaskEscalation(updatedTask); 
+    };
+
+    const handlePublishTask = async (task) => {
+        const success = await executePublishTask(task, userRole);
+        if (success) {
+            const publishedTask = { ...task, isGlobal: true, owner: 'Me', syncStatus: userRole >= 2 ? 'published' : 'pending' };
+            await updateVaultTask(publishedTask);
+            setTasks(prev => [...prev.filter(t => t.id !== task.id), publishedTask]);
+            await scheduleTaskEscalation(publishedTask);
+            await triggerHaptic('success');
+        } else {
+            triggerHaptic('error');
+            alert("Database Error: Could not publish task.");
+        }
+    };
+
+    const handleDeleteTask = async (taskId) => {
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+        if (task.isGlobal) {
+            const success = await executePurgeTask(taskId);
+            if (!success) {
+                triggerHaptic('error');
+                alert("Cloud Error: Supabase rejected the deletion.");
+                return;
+            }
+        }
+        await deleteVaultTask(taskId);
+        await cancelTaskEscalation(taskId);
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+        await triggerHaptic('success');
+    };
+  
+    const handleBulkPurge = async (selectedIds) => {
+        if (!selectedIds || selectedIds.length === 0) return;
+        await triggerHaptic('heavy');
+        
+        let successfullyPurgedIds = [];
+        for (const id of selectedIds) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) continue;
+
+            if (task.isGlobal) {
+                const success = await executePurgeTask(id);
+                if (success) successfullyPurgedIds.push(id);
+                else {
+                    triggerHaptic('error').catch(()=>{});
+                    alert(`Database Error: Could not delete "${task.title}".`);
+                }
+            } else {
+                await deleteVaultTask(id);
+                successfullyPurgedIds.push(id);
+            }
+        }
+        
+        setTasks(prev => prev.map(t => {
+            if (successfullyPurgedIds.includes(t.id)) {
+                if (t.isGlobal && (t.owner === 'Me' || t.author_name === 'Me' || t.author_name === 'Admin')) {
+                    const demotedTask = { ...t, isGlobal: false, syncStatus: 'rejected' };
+                    updateVaultTask(demotedTask).catch(()=>{});
+                    return demotedTask;
+                }
+                cancelTaskEscalation(t.id).catch(()=>{});
+                return null;
+            }
+            return t;
+        }).filter(Boolean));
+    };
+
+    useEffect(() => {
+        if (!theme) return; 
+        const root = document.documentElement;
+        root.className = root.className.replace(/\btheme-\S+/g, '');
+        root.classList.add(`theme-${theme}`);
+    }, [theme]);
+
+
+    // --- THE GATEKEEPER ROUTING ---
+
+    if (systemStatus === 'initializing' || systemStatus === 'onboarding') {
+        return (
+            <BootScreen 
+                key="bootscreen" 
+                status={systemStatus} 
+                onComplete={() => setSystemStatus(sessionData ? 'ready' : 'auth')} 
+            />
+        );
+    }
+
+    if (systemStatus === 'auth') {
+        return (
+            <AuthView 
+                key="authview" 
+                onAuthSuccess={async (user) => {
+                    const role = await fetchUserRole(user.email);
+                    setUserRole(role);
+                    setSessionData(user);
+                    setSystemStatus('ready');
+                }} 
+            />
+        );
+    }
+
+    return (
+        <MainLayout 
+            tasks={tasks} userRole={userRole} setUserRole={setUserRole}
+            density={density} setDensity={setDensity} theme={theme} setTheme={setTheme}
+            isPingingCloud={isPingingCloud} initialTab={initialTab}
+            onTaskCompleted={handleTaskCompleted} onTaskUndo={handleTaskUndo}
+            onAddTask={handleAddTask} onUpdateTask={handleUpdateTask}
+            onPublishTask={handlePublishTask} onDeleteTask={handleDeleteTask}
+            onBulkPurge={handleBulkPurge}
+        />
+    ); 
+}
